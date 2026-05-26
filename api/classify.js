@@ -69,6 +69,7 @@ export default async function handler(req,res){
         }
 
         const text = data.content?.[0]?.text || "";
+        console.log("Claude 원문:", text);
 
         // 코드블록 제거
         const cleaned = text
