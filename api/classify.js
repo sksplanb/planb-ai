@@ -39,6 +39,9 @@ export default async function handler(req,res){
 }
 `;
 
+        console.log("Claude 호출 직전");
+        console.log(process.env.ANTHROPIC_API_KEY ? "키 있음" : "키 없음");
+        
         const claudeResp=await fetch(
             "https://api.anthropic.com/v1/messages",
             {
