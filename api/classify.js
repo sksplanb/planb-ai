@@ -62,10 +62,37 @@ export default async function handler(req,res){
             }
         );
 
-        const data=await claudeResp.json();
+        const data = await claudeResp.json();
 
-        return res.status(200).json(data);
+const text =
+    data.content?.[0]?.text || "";
 
+const cleaned =
+    text
+    .replace(/```json\n?/g,'')
+    .replace(/```/g,'')
+    .trim();
+
+let parsed;
+
+try{
+
+    parsed=JSON.parse(cleaned);
+
+}catch(e){
+
+    return res.status(500).json({
+        error:"Claude JSON 파싱 실패",
+        raw:text
+    });
+
+}
+
+return res.status(200).json({
+    success:true,
+    parsed:parsed,
+    usage:data.usage
+});
     }catch(e){
 
         return res.status(500).json({
