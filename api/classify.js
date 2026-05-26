@@ -9,10 +9,9 @@ export default async function handler(req,res){
     try{
 
         const body=req.body;
+        const { candidates=[] } = body;
 
-        const { candidates } = body;
-
-        const numberedList=candidates.map((c,i)=>
+        const numberedList = candidates.map((c,i)=>
             `${i+1}. [${c.org||'?'}] ${c.title||''}`
         ).join('\n');
 
@@ -25,7 +24,7 @@ export default async function handler(req,res){
 3 문화공간
 4 문화기획
 
-반드시 JSON만 반환:
+반드시 JSON만 반환하세요.
 
 {
  "results":[
@@ -39,10 +38,7 @@ export default async function handler(req,res){
 }
 `;
 
-        console.log("Claude 호출 직전");
-        console.log(process.env.ANTHROPIC_API_KEY ? "키 있음" : "키 없음");
-        
-        const claudeResp=await fetch(
+        const claudeResp = await fetch(
             "https://api.anthropic.com/v1/messages",
             {
                 method:"POST",
@@ -66,38 +62,39 @@ export default async function handler(req,res){
         );
 
         const data = await claudeResp.json();
-        console.log("Claude 응답 도착");
-        
-console.log(JSON.stringify(data));
-const text =
-    data.content?.[0]?.text || "";
 
-const cleaned =
-    text
-    .replace(/```json\n?/g,'')
-    .replace(/```/g,'')
-    .trim();
+        // Claude API 자체 에러
+        if(data.error){
+            return res.status(500).json(data);
+        }
 
-let parsed;
+        const text = data.content?.[0]?.text || "";
 
-try{
+        // 코드블록 제거
+        const cleaned = text
+            .replace(/```json/g,"")
+            .replace(/```/g,"")
+            .trim();
 
-    parsed=JSON.parse(cleaned);
+        let parsed;
 
-}catch(e){
+        try{
+            parsed = JSON.parse(cleaned);
+        }catch(e){
 
-    return res.status(500).json({
-        error:"Claude JSON 파싱 실패",
-        raw:text
-    });
+            return res.status(500).json({
+                error:"Claude JSON 파싱 실패",
+                raw:text
+            });
 
-}
+        }
 
-return res.status(200).json({
-    success:true,
-    parsed:parsed,
-    usage:data.usage
-});
+        return res.status(200).json({
+            success:true,
+            parsed,
+            usage:data.usage
+        });
+
     }catch(e){
 
         return res.status(500).json({
