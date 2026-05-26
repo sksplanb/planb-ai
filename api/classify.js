@@ -63,7 +63,7 @@ export default async function handler(req,res){
         );
 
         const data = await claudeResp.json();
-
+console.log(JSON.stringify(data));
 const text =
     data.content?.[0]?.text || "";
 
