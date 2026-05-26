@@ -18,26 +18,26 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: "candidates 배열이 필요합니다" });
     }
     
-    // 후보 공고 목록 (사업분류 정보 포함)
+    // 후보 공고 목록
     const numberedList = candidates.map((c, i) =>
       `${i+1}. [${c.org || '?'}] ${c.title || ''}${c.srvceDivNm ? ' (' + c.srvceDivNm + ')' : ''}`
     ).join('\n');
     
-    // 사업이력 섹션 구성
+    // 사업이력 섹션 (카테고리당 10개로 축소)
     let historySection = '';
     const categories = ['연구컨설팅', '교육콘텐츠', '문화공간', '문화기획'];
     for (const cat of categories) {
       const items = historyByCategory[cat] || [];
       if (items.length > 0) {
         historySection += `\n[${cat}] (${items.length}건)\n`;
-        const sample = items.slice(0, 20);
+        const sample = items.slice(0, 10); // 20 → 10
         historySection += sample.map(it => `- ${it.title}${it.desc ? ': ' + it.desc : ''}`).join('\n');
-        if (items.length > 20) historySection += `\n... (외 ${items.length - 20}건)`;
+        if (items.length > 10) historySection += `\n... (외 ${items.length - 10}건)`;
         historySection += '\n';
       }
     }
     
-    // 지역 분류 섹션 (옵션)
+    // 지역 분류 섹션
     let regionSection = '';
     let regionFormat = '';
     if (classifyRegion) {
@@ -45,8 +45,8 @@ export default async function handler(req, res) {
       regionSection = `
 또한 각 사업의 "지역 범주"도 함께 판단해주세요:
 - "우리": 발주 또는 사업 수행 지역이 ${ourRegionsText} 중 하나
-- "전국": 중앙부처(문화체육관광부 등), 전국 단위 공공기관(한국문화예술위원회 등), 전국 단위 사업
-- "타지역": 위에 해당하지 않는 다른 지역 (서울, 경기, 인천, 충청, 전라, 강원, 제주 등)
+- "전국": 중앙부처, 전국 단위 공공기관, 전국 단위 사업
+- "타지역": 위에 해당하지 않는 다른 지역
 - "불명": 정보 부족으로 판단 불가
 `;
       regionFormat = `, "region": "우리|전국|타지역|불명"`;
@@ -66,7 +66,6 @@ ${historySection || '(이력 정보 없음)'}
 당신의 역할:
 1. 각 후보 공고가 위 4개 카테고리 중 어디에 해당하는지 판단 (복수 가능)
 2. 플랜비가 이 사업을 수행할 수 있는지 적합도 점수 (0-10)
-3. 1줄 추천 이유 (50자 이내)
 ${regionSection}
 
 판단 기준:
@@ -78,8 +77,8 @@ ${regionSection}
 응답은 반드시 다음 JSON 형식으로만:
 {
   "results": [
-    {"n": 1, "score": 8, "categories": ["연구컨설팅"], "reason": "지역문화 정책 연구로 적합"${regionFormat}},
-    {"n": 2, "score": 6, "categories": ["교육콘텐츠", "문화기획"], "reason": "예술교육 프로그램 기획"${regionFormat}}
+    {"n": 1, "score": 8, "categories": ["연구컨설팅"]${regionFormat}},
+    {"n": 2, "score": 6, "categories": ["교육콘텐츠", "문화기획"]${regionFormat}}
   ]
 }
 
@@ -89,53 +88,45 @@ ${regionSection}
 
     const userMessage = `다음 ${candidates.length}건을 평가해주세요:\n\n${numberedList}`;
     
-  // Anthropic API 호출 (429 rate limit 자동 재시도)
-        let claudeResp;
-        for (let attempt = 0; attempt < 3; attempt++) {
-            claudeResp = await fetch(
-                "https://api.anthropic.com/v1/messages",
-                {
-                    method:"POST",
-                    headers:{
-                        "x-api-key":process.env.ANTHROPIC_API_KEY,
-                        "anthropic-version":"2023-06-01",
-                        "content-type":"application/json"
-                    },
-                    body:JSON.stringify({
-                        model:"claude-sonnet-4-6",
-                        max_tokens:8000,
-                        system:systemPrompt,
-                        messages:[
-                            {
-                                role:"user",
-                                content:userMessage
-                            }
-                        ]
-                    })
-                }
-            );
-            
-            // 429 rate limit이면 12초 대기 후 재시도
-            if (claudeResp.status === 429) {
-                console.log("Rate limit 발생, 12초 대기 후 재시도 (시도 " + (attempt + 1) + "/3)");
-                await new Promise(r => setTimeout(r, 12000));
-                continue;
-            }
-            
-            // 그 외 응답이면 루프 탈출
-            break;
+    // Anthropic API 호출 (429 자동 재시도)
+    let claudeResp;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      claudeResp = await fetch(
+        "https://api.anthropic.com/v1/messages",
+        {
+          method: "POST",
+          headers: {
+            "x-api-key": process.env.ANTHROPIC_API_KEY,
+            "anthropic-version": "2023-06-01",
+            "content-type": "application/json"
+          },
+          body: JSON.stringify({
+            model: "claude-haiku-4-5",
+            max_tokens: 4000,
+            system: systemPrompt,
+            messages: [
+              { role: "user", content: userMessage }
+            ]
+          })
         }
+      );
+      
+      if (claudeResp.status === 429) {
+        console.log("Rate limit, 12초 대기 후 재시도 (" + (attempt + 1) + "/3)");
+        await new Promise(r => setTimeout(r, 12000));
+        continue;
+      }
+      break;
+    }
+    
     const data = await claudeResp.json();
     
-    // Claude API 자체 에러
     if (data.error) {
       return res.status(500).json(data);
     }
     
     const text = data.content?.[0]?.text || "";
-    console.log("Claude 원문 (처음 300자):", text.substring(0, 300));
     
-    // 코드블록 제거
     const cleaned = text
       .replace(/```json/g, "")
       .replace(/```/g, "")
