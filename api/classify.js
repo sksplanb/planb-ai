@@ -89,26 +89,42 @@ ${regionSection}
 
     const userMessage = `다음 ${candidates.length}건을 평가해주세요:\n\n${numberedList}`;
     
-    const claudeResp = await fetch(
-      "https://api.anthropic.com/v1/messages",
-      {
-        method: "POST",
-        headers: {
-          "x-api-key": process.env.ANTHROPIC_API_KEY,
-          "anthropic-version": "2023-06-01",
-          "content-type": "application/json"
-        },
-        body: JSON.stringify({
-          model: "claude-sonnet-4-6",
-          max_tokens: 8000,
-          system: systemPrompt,
-          messages: [
-            { role: "user", content: userMessage }
-          ]
-        })
-      }
-    );
-    
+  // Anthropic API 호출 (429 rate limit 자동 재시도)
+        let claudeResp;
+        for (let attempt = 0; attempt < 3; attempt++) {
+            claudeResp = await fetch(
+                "https://api.anthropic.com/v1/messages",
+                {
+                    method:"POST",
+                    headers:{
+                        "x-api-key":process.env.ANTHROPIC_API_KEY,
+                        "anthropic-version":"2023-06-01",
+                        "content-type":"application/json"
+                    },
+                    body:JSON.stringify({
+                        model:"claude-sonnet-4-6",
+                        max_tokens:8000,
+                        system:systemPrompt,
+                        messages:[
+                            {
+                                role:"user",
+                                content:userMessage
+                            }
+                        ]
+                    })
+                }
+            );
+            
+            // 429 rate limit이면 12초 대기 후 재시도
+            if (claudeResp.status === 429) {
+                console.log("Rate limit 발생, 12초 대기 후 재시도 (시도 " + (attempt + 1) + "/3)");
+                await new Promise(r => setTimeout(r, 12000));
+                continue;
+            }
+            
+            // 그 외 응답이면 루프 탈출
+            break;
+        }
     const data = await claudeResp.json();
     
     // Claude API 자체 에러
